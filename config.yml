@@ -49,8 +49,19 @@ datasets:
     # https://archive.ics.uci.edu/ml/datasets/Sentence+Classification
     # has been used. The dataset includes following 3 domains:
     # arxiv, jdm and plos
-    container_path: ../../data/SentenceCorpus
+    container_path: data/quanox
     categories:
+      - books
+      - cars_motorcycles
+      - consumer_credit
+      - fitness_sport
+      - healthy_organic_food
+      - hightech_gadgets
+      - house_apartment_buying
+      - investments
+      - mortgage
+      - shopping
+      - video_games
     shuffle: True
     random_state: 42
 
