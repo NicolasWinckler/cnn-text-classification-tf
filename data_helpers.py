@@ -169,3 +169,41 @@ def load_embedding_vectors_glove(vocabulary, filename, vector_size):
             embedding_vectors[idx] = vector
     f.close()
     return embedding_vectors
+
+
+# to track the data indices from splitted docs 
+# Notes: long text training files have been splitted into smaller text (sentences) for all categories 
+def get_file_mapping(input_map_file, mapper = {}, invert_mapper = {}, verbosity = False):
+    line = mappfile.readline()
+    counter = 0
+    while line:
+        if verbosity:
+            print(counter)
+        cols = line.strip().split(' ')
+        if len(cols) == 2:
+            flags = cols[0]
+            path = cols[1]
+            if str(flags) == "FILE":
+                if verbosity:
+                    print(path)
+                line = mappfile.readline()
+                indices = line.strip().split(' ')
+                for key in indices:
+                    invert_mapper[key] = path
+                indices = [int(i) for i in indices]
+                if indices:
+                    mapper[path] = indices
+
+                if verbosity:
+                    print(indices)
+                counter = counter +1
+
+        line = mappfile.readline()
+
+
+    if verbosity:
+        print("counter {:d}".format(counter))
+        for i in invert_mapper:
+            print("{} --> {}".format(i,invert_mapper[i]))
+        for i in mapper:
+            print("{} --> {}".format(i,mapper[i]))

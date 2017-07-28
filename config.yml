@@ -51,9 +51,12 @@ datasets:
     # arxiv, jdm and plos
     container_path: data/quanox
     categories:
+      - art
       - books
+      - business_decision_maker
       - cars_motorcycles
       - consumer_credit
+      - family_young_children
       - fitness_sport
       - healthy_organic_food
       - hightech_gadgets
@@ -65,3 +68,4 @@ datasets:
     shuffle: True
     random_state: 42
 
+mappingfile: data/quanox/mapfiles.txt
