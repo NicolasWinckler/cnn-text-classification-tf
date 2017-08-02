@@ -57,7 +57,7 @@ print("Loading test data...")
 dataset_name = "localdata"
 datasets = data_helpers.get_datasets_localdata(container_path=cfg["datasets"][dataset_name]["testset_path"],
                                                      categories=cfg["datasets"][dataset_name]["categories"],
-                                                     shuffle=cfg["datasets"][dataset_name]["shuffle"],
+                                                     shuffle=False,#shuffle=cfg["datasets"][dataset_name]["shuffle"],
                                                      random_state=cfg["datasets"][dataset_name]["random_state"])
 x_raw, y_test = data_helpers.load_data_labels(datasets)
 
@@ -111,10 +111,6 @@ with graph.as_default():
 
 
 
-idx2file_map = {}
-file2idx_map = {}
-data_helpers.get_file_mapping(cfg['mappingfile'], file2idx_map, idx2file_map)
-
 
 
 print("all_predictions = {} ".format(all_predictions))
@@ -143,3 +139,17 @@ out_path = os.path.join(FLAGS.checkpoint_dir, "..", "prediction.csv")
 print("Saving evaluation to {0}".format(out_path))
 with open(out_path, 'w') as f:
     csv.writer(f).writerows(predictions_human_readable)
+
+
+
+
+idx2file_map = {}
+file2idx_map = {}
+data_helpers.get_file_mapping(cfg['mappingfile'], file2idx_map, idx2file_map)
+
+for file in file2idx_map:
+    print("file = {}".format(file))
+
+
+print("files : {}".format(datasets['filenames']))
+#path, filename = os.path.split("/path/filename")
