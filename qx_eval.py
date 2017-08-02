@@ -8,6 +8,10 @@ from tensorflow.contrib import learn
 import csv
 from sklearn import metrics
 import yaml
+import re
+def get_numbers_from_filename(filename):
+    return re.search(r'\d+', filename).group(0)
+
 
 
 def softmax(x):
@@ -147,9 +151,77 @@ idx2file_map = {}
 file2idx_map = {}
 data_helpers.get_file_mapping(cfg['mappingfile'], file2idx_map, idx2file_map)
 
-for file in file2idx_map:
-    print("file = {}".format(file))
+#for file in file2idx_map:
+#    print("file = {}".format(file))
 
-
+y_final_pred_map = {}
 print("files : {}".format(datasets['filenames']))
-#path, filename = os.path.split("/path/filename")
+#dataset['target_names']
+#for file in datasets['filenames']:
+for i in range(len(datasets['filenames'])):
+    file = datasets['filenames'][i]
+    label = datasets['target'][i]
+    #print("i={}".format(i))
+    #print(all_predictions[i])
+    path, filename = os.path.split(file)
+    path, categ = os.path.split(path)
+    idx = int(get_numbers_from_filename(filename))
+    #print(idx)
+    sourcefile = idx2file_map[idx]
+    #print(sourcefile)
+    pred = all_predictions[i]
+    if sourcefile not in y_final_pred_map:
+        y_final_pred_map[sourcefile] = list()
+    y_final_pred_map[sourcefile].append([idx,pred,label])
+
+y_final_test = []
+y_final_pred = []
+for file, val in y_final_pred_map.items():
+    #print(file)
+    #print(val)
+    hist = {}
+    y_final_test.append(int(val[0][2]))
+    for v in val:
+        if v[1] not in hist:
+            hist[v[1]] = 0
+        hist[v[1]] = hist[v[1]] + 1
+    # get key with max values in hist
+    vals = list(hist.values())
+    keys = list(hist.keys())
+    results = keys[vals.index(max(vals))]
+    y_final_pred.append(int(results))
+
+
+
+y_final_test = np.array(y_final_test)
+y_final_pred = np.array(y_final_pred)
+
+
+print("y_final_test = {}".format(y_final_test))
+print("y_final_pred = {}".format(y_final_pred))
+
+
+
+
+
+
+
+
+
+# Print accuracy if y_test is defined
+if y_final_test is not None:
+    correct_predictions = float(sum(y_final_pred == y_final_test))
+    print("Total number of test examples: {}".format(len(y_final_test)))
+    print("Accuracy on source documents: {:g}".format(correct_predictions/float(len(y_final_test))))
+    print(metrics.classification_report(y_final_test, y_final_pred, target_names=datasets['target_names']))
+    print(metrics.confusion_matrix(y_final_test, y_final_pred))
+
+# Save the evaluation to a csv
+# predictions_human_readable = np.column_stack((np.array(x_raw),
+#                                               [int(prediction) for prediction in y_final_pred],
+#                                               [ "{}".format(probability) for probability in all_probabilities]))
+# out_path = os.path.join(FLAGS.checkpoint_dir, "..", "prediction.csv")
+# print("Saving evaluation to {0}".format(out_path))
+# with open(out_path, 'w') as f:
+#     csv.writer(f).writerows(predictions_human_readable)
+
