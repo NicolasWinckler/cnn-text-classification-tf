@@ -174,6 +174,7 @@ def load_embedding_vectors_glove(vocabulary, filename, vector_size):
 # to track the data indices from splitted docs 
 # Notes: long text training files have been splitted into smaller text (sentences) for all categories 
 def get_file_mapping(input_map_file, mapper = {}, invert_mapper = {}, verbosity = False):
+    mappfile = open(input_map_file, 'r')
     line = mappfile.readline()
     counter = 0
     while line:
@@ -189,7 +190,7 @@ def get_file_mapping(input_map_file, mapper = {}, invert_mapper = {}, verbosity 
                 line = mappfile.readline()
                 indices = line.strip().split(' ')
                 for key in indices:
-                    invert_mapper[key] = path
+                    invert_mapper[int(key)] = path
                 indices = [int(i) for i in indices]
                 if indices:
                     mapper[path] = indices
