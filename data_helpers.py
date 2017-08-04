@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import numpy as np
 import re
 from sklearn.datasets import fetch_20newsgroups
@@ -9,7 +10,7 @@ def clean_str(string):
     Tokenization/string cleaning for all datasets except for SST.
     Original taken from https://github.com/yoonkim/CNN_sentence/blob/master/process_data.py
     """
-    string = re.sub(r"[^A-Za-z0-9(),!?\'\`]", " ", string)
+    string = re.sub(r"[^A-Za-z0-9(),!?\'\`\w+]", " ", string)
     string = re.sub(r"\'s", " \'s", string)
     string = re.sub(r"\'ve", " \'ve", string)
     string = re.sub(r"n\'t", " n\'t", string)
@@ -89,7 +90,7 @@ def get_datasets_localdata(container_path=None, categories=None, load_content=Tr
     :return: data and labels of the dataset
     """
     datasets = load_files(container_path=container_path, categories=categories,
-                          load_content=load_content, shuffle=shuffle, encoding=encoding,
+                          load_content=load_content, shuffle=shuffle, encoding='utf-8',
                           random_state=random_state)
     return datasets
 

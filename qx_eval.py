@@ -2,6 +2,7 @@
 
 import tensorflow as tf
 import numpy as np
+import pandas
 import os
 import data_helpers
 from tensorflow.contrib import learn
@@ -128,12 +129,32 @@ print("y_test size = {} ".format(len(y_test)))
 
 
 # Print accuracy if y_test is defined
+
 if y_test is not None:
     correct_predictions = float(sum(all_predictions == y_test))
     print("Total number of test examples: {}".format(len(y_test)))
     print("Accuracy on splitted documents: {:g}".format(correct_predictions/float(len(y_test))))
-    print(metrics.classification_report(y_test, all_predictions, target_names=datasets['target_names']))
+    reportsplitdoc = metrics.classification_report(y_test, all_predictions, target_names=datasets['target_names'])
+    print(reportsplitdoc)
     print(metrics.confusion_matrix(y_test, all_predictions))
+
+
+
+report_data = []
+lines = reportsplitdoc.split('\n')
+#print(lines)
+for line in lines[2:-3]:
+    row = {}
+    row_data = line.split() 
+    row['class'] = row_data[0]
+    row['precision'] = float(row_data[1])
+    row['recall'] = float(row_data[2])
+    row['f1_score'] = float(row_data[3])
+    row['support'] = float(row_data[4])
+    report_data.append(row)
+
+#print("REPORT = {}".format(report_data))
+
 
 # Save the evaluation to a csv
 predictions_human_readable = np.column_stack((np.array(x_raw),
@@ -176,6 +197,12 @@ for i in range(len(datasets['filenames'])):
 
 y_final_test = []
 y_final_pred = []
+misclassified_files = {}
+
+Normalize = 0.0
+for r in report_data:
+    Normalize = Normalize + r['support']
+
 for file, val in y_final_pred_map.items():
     #print(file)
     #print(val)
@@ -185,11 +212,31 @@ for file, val in y_final_pred_map.items():
         if v[1] not in hist:
             hist[v[1]] = 0
         hist[v[1]] = hist[v[1]] + 1
-    # get key with max values in hist
+
+    # weight not yet used 
+    use_weight = False
+    if use_weight:
+        weight = 1.0
+        for categnb, freq in hist.items():
+            idx = int(categnb)
+            categstr = datasets['target_names'][idx]
+            for r in report_data:
+                if categstr in r['class']:
+                    weight = r['support']
+            hist[categnb] = freq*weight
+    # get key with max values in hist 
     vals = list(hist.values())
     keys = list(hist.keys())
     results = keys[vals.index(max(vals))]
     y_final_pred.append(int(results))
+    if(results != int(val[0][2])):
+        path, file = os.path.split(file)
+        path, categ = os.path.split(path)
+        file = categ + "/" + file
+        misclassified_files[file] = list([int(val[0][2]),int(results)])
+
+
+
 
 
 
@@ -200,12 +247,53 @@ y_final_pred = np.array(y_final_pred)
 print("y_final_test = {}".format(y_final_test))
 print("y_final_pred = {}".format(y_final_pred))
 
+import pprint
+
+print("misclassified files :")
+misclassified_files_array = []
+temp_array = []
+for file, val in misclassified_files.items():
+    obs=datasets['target_names'][val[0]]
+    pred=datasets['target_names'][val[1]]
+    print("files = {}   obs: {}   pred: {} ".format(file,obs,pred))
+    misclassified_files_array.append([file,obs,pred])
+    temp_array.append([file,obs,pred])
 
 
 
+# #print(pandas.DataFrame(data=misclassified_files_array))
+# width = max(len(cn) for cn in misclassified_files)
+# headers = ["file", "obs", "pred"]
+# fmt = '%% %ds' % width  # first column: class name
+# fmt += '  '
+# fmt += ' '.join(['% 9s' for _ in headers])
+# fmt += '\n'
+# headers = [""] + headers
+# report = fmt % tuple(headers)
+# report += '\n'
+
+# for val in misclassified_files_array:
+#     report += val[0] + "   " + val[1] + "  " +val[2] +"\n"
+
+# #     values = [file]
+# #     for v in val:
+# #         values += [" {} ".format(v)]
+# #     report += fmt % tuple(values)
+
+# print(report)
 
 
+# from prettytable import PrettyTable
 
+# x = [["A", "B"], ["C", "D"]]
+
+#{file:[obs,pred]}
+p = PrettyTable()
+for row in temp_array:
+   p.add_row(row)
+
+p.align = "l"
+print(p.get_string(header=False, border=False))
 
 
 # Print accuracy if y_test is defined

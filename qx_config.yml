@@ -32,11 +32,12 @@ datasets:
     trainingset_path: data/quanox/train
     testset_path: data/quanox/test
     categories:
-      - books
       - art
+      - books
       - business_decision_maker
       - cars_motorcycles
       - consumer_credit
+      - culture
       - family_young_children
       - fitness_sport
       - healthy_organic_food
@@ -44,7 +45,9 @@ datasets:
       - house_apartment_buying
       - investments
       - mortgage
+      - movies
       - shopping
+      - tv_shows
       - video_games
     shuffle: True
     random_state: 42
