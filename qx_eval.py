@@ -10,6 +10,7 @@ import csv
 from sklearn import metrics
 import yaml
 import re
+from prettytable import PrettyTable
 def get_numbers_from_filename(filename):
     return re.search(r'\d+', filename).group(0)
 
@@ -23,8 +24,6 @@ def softmax(x):
     exp_x = np.exp(x - max_x)
     return exp_x / np.sum(exp_x, axis=1).reshape((-1, 1))
 
-with open("qx_config.yml", 'r') as ymlfile:
-    cfg = yaml.load(ymlfile)
 
 # Parameters
 # ==================================================
@@ -34,6 +33,7 @@ with open("qx_config.yml", 'r') as ymlfile:
 # Eval Parameters
 tf.flags.DEFINE_integer("batch_size", 64, "Batch Size (default: 64)")
 tf.flags.DEFINE_string("checkpoint_dir", "", "Checkpoint directory from training run")
+tf.flags.DEFINE_string("config", "qx_config.yml", "yaml config file")
 #tf.flags.DEFINE_boolean("eval_train", False, "Evaluate on all training data")
 
 # Misc Parameters
@@ -47,6 +47,11 @@ print("\nParameters:")
 for attr, value in sorted(FLAGS.__flags.items()):
     print("{}={}".format(attr.upper(), value))
 print("")
+
+
+config_file = FLAGS.config
+with open(config_file, 'r') as ymlfile:
+    cfg = yaml.load(ymlfile)
 
 datasets = None
 
@@ -73,8 +78,9 @@ x_test = np.array(list(vocab_processor.transform(x_raw)))
 
 print("\nEvaluating...\n")
 
+# ====================================================================================================
 # Evaluation
-# ==================================================
+# ====================================================================================================
 checkpoint_file = tf.train.latest_checkpoint(FLAGS.checkpoint_dir)
 graph = tf.Graph()
 with graph.as_default():
@@ -116,33 +122,69 @@ with graph.as_default():
 
 
 
-
-
-print("all_predictions = {} ".format(all_predictions))
-print("all_predictions size = {} ".format(len(all_predictions)))
-print("y_test = {} ".format(y_test))
-print("y_test size = {} ".format(len(y_test)))
-
 y_test = np.argmax(y_test, axis=1)
-print("y_test = {} ".format(y_test))
-print("y_test size = {} ".format(len(y_test)))
+
+# Print evaluation summary on splitted document
+# ====================================================================================================
+
+if y_test is None:
+    print("[ERROR] observed class array, y_test, is empty. Program will now exit ")
+    exit()
 
 
-# Print accuracy if y_test is defined
+def get_summary_header(obs, pred):
+    correct_predictions = float(sum(pred == obs))
+    p = PrettyTable()
+    p.field_names = ["correct predictions", "incorrect predictions", "Test set sample size", "Accuracy"]
+    acc = "{:g}".format(correct_predictions/float(len(obs)))
+    test_size = str(len(pred))
+    cor_pred_size = str(int(correct_predictions))
+    incor_pred_size = str(sum(pred != obs))
+    p.add_row([cor_pred_size, incor_pred_size, test_size, acc])
 
-if y_test is not None:
-    correct_predictions = float(sum(all_predictions == y_test))
-    print("Total number of test examples: {}".format(len(y_test)))
-    print("Accuracy on splitted documents: {:g}".format(correct_predictions/float(len(y_test))))
-    reportsplitdoc = metrics.classification_report(y_test, all_predictions, target_names=datasets['target_names'])
-    print(reportsplitdoc)
-    print(metrics.confusion_matrix(y_test, all_predictions))
+    p.align["correct predictions"] = "c"
+    p.align["incorrect predictions"] = "c"
+    p.align["Test set sample size"] = "c"
+    p.align["Accuracy"] = "c"
+    return p.get_string(header=True, border=True)
 
 
+def confusion_matrix_string(obs, pred, target_names):
+    correct_predictions = float(sum(pred == obs))
+    p = PrettyTable()
+    field_names = []
+    for categ in target_names:
+        field_name = categ.split('_')
+        field_names.append(field_name[0])
+    p.field_names = field_names
 
+    confmat = metrics.confusion_matrix(obs, pred)
+    for row in confmat:
+        p.add_row(row)
+
+    field_len = len(field_names)
+    p.add_column("cluster",field_names)
+    p.align["cluster"] = "r"
+    return p.get_string(header=True, border=False)
+
+table_txt = confusion_matrix_string(y_test, all_predictions, datasets['target_names'])
+
+print(table_txt)
+
+report_summary1 = "========================= Evaluation summary of splitted documents =========================\n"
+report_summary1 += "\n" 
+report_summary1 += get_summary_header(y_test, all_predictions)
+report_summary1 += "\n \n"
+reportsplitdoc = metrics.classification_report(y_test, all_predictions, target_names=datasets['target_names'])
+report_summary1 += reportsplitdoc
+report_summary1 += "\n \n"
+report_summary1 += str(metrics.confusion_matrix(y_test, all_predictions))
+print(report_summary1)
+
+
+# parse sklearn report 
 report_data = []
 lines = reportsplitdoc.split('\n')
-#print(lines)
 for line in lines[2:-3]:
     row = {}
     row_data = line.split() 
@@ -153,10 +195,11 @@ for line in lines[2:-3]:
     row['support'] = float(row_data[4])
     report_data.append(row)
 
-#print("REPORT = {}".format(report_data))
 
 
 # Save the evaluation to a csv
+# ====================================================================================================
+
 predictions_human_readable = np.column_stack((np.array(x_raw),
                                               [int(prediction) for prediction in all_predictions],
                                               [ "{}".format(probability) for probability in all_probabilities]))
@@ -167,53 +210,61 @@ with open(out_path, 'w') as f:
 
 
 
+# ====================================================================================================
+# Reconstruction of documents
+# ====================================================================================================
 
 idx2file_map = {}
-file2idx_map = {}
-data_helpers.get_file_mapping(cfg['mappingfile'], file2idx_map, idx2file_map)
+#get map: key=file, value splited doc index array 
+data_helpers.get_file_mapping(cfg['mappingfile'], invert_mapper = idx2file_map)
 
-#for file in file2idx_map:
-#    print("file = {}".format(file))
+# for each splitted file, parse the filename to get the index
+# and hence get the corresponding original source file name via the map
+# Then create a new map that map source files to splitted doc triplet [idx, pred, obs]
+# ====================================================================================================
 
 y_final_pred_map = {}
-print("files : {}".format(datasets['filenames']))
-#dataset['target_names']
-#for file in datasets['filenames']:
 for i in range(len(datasets['filenames'])):
     file = datasets['filenames'][i]
     label = datasets['target'][i]
-    #print("i={}".format(i))
-    #print(all_predictions[i])
+    # remove path
     path, filename = os.path.split(file)
     path, categ = os.path.split(path)
+    # get index from splitted file
     idx = int(get_numbers_from_filename(filename))
-    #print(idx)
+    # get source file name from splitted doc idx
     sourcefile = idx2file_map[idx]
-    #print(sourcefile)
     pred = all_predictions[i]
+    # fill map
     if sourcefile not in y_final_pred_map:
         y_final_pred_map[sourcefile] = list()
     y_final_pred_map[sourcefile].append([idx,pred,label])
 
+
+# vote system to labelize the reconstructed document from splitted doc predictions
+# find during the process the misclassified reconstructed document
+# ====================================================================================================
+
+
 y_final_test = []
 y_final_pred = []
-misclassified_files = {}
+misclassified_files = []
 
 Normalize = 0.0
 for r in report_data:
     Normalize = Normalize + r['support']
 
 for file, val in y_final_pred_map.items():
-    #print(file)
-    #print(val)
     hist = {}
+    # fill the new y_test with observed class
     y_final_test.append(int(val[0][2]))
+    # get predicted class, and fill an histogram
     for v in val:
         if v[1] not in hist:
             hist[v[1]] = 0
         hist[v[1]] = hist[v[1]] + 1
 
-    # weight not yet used 
+    # apply weight on prediction (not yet used, doesn t improve accuracy)
     use_weight = False
     if use_weight:
         weight = 1.0
@@ -223,19 +274,21 @@ for file, val in y_final_pred_map.items():
             for r in report_data:
                 if categstr in r['class']:
                     weight = r['support']
-            hist[categnb] = freq*weight
+            hist[categnb] = freq*weight/Normalize
     # get key with max values in hist 
     vals = list(hist.values())
     keys = list(hist.keys())
     results = keys[vals.index(max(vals))]
+    # fill the new y_test with predicted class
     y_final_pred.append(int(results))
+    # find misclassified files
     if(results != int(val[0][2])):
         path, file = os.path.split(file)
         path, categ = os.path.split(path)
         file = categ + "/" + file
-        misclassified_files[file] = list([int(val[0][2]),int(results)])
-
-
+        obs=datasets['target_names'][int(val[0][2])]
+        pred=datasets['target_names'][int(results)]
+        misclassified_files.append([file,obs,pred])
 
 
 
@@ -243,66 +296,59 @@ for file, val in y_final_pred_map.items():
 y_final_test = np.array(y_final_test)
 y_final_pred = np.array(y_final_pred)
 
-
-print("y_final_test = {}".format(y_final_test))
-print("y_final_pred = {}".format(y_final_pred))
-
-import pprint
-
-print("misclassified files :")
-misclassified_files_array = []
-temp_array = []
-for file, val in misclassified_files.items():
-    obs=datasets['target_names'][val[0]]
-    pred=datasets['target_names'][val[1]]
-    print("files = {}   obs: {}   pred: {} ".format(file,obs,pred))
-    misclassified_files_array.append([file,obs,pred])
-    temp_array.append([file,obs,pred])
+#print("y_final_test = {}".format(y_final_test))
+#print("y_final_pred = {}".format(y_final_pred))
 
 
+# format, print and save misclassified files
+# ====================================================================================================
 
-# #print(pandas.DataFrame(data=misclassified_files_array))
-# width = max(len(cn) for cn in misclassified_files)
-# headers = ["file", "obs", "pred"]
-# fmt = '%% %ds' % width  # first column: class name
-# fmt += '  '
-# fmt += ' '.join(['% 9s' for _ in headers])
-# fmt += '\n'
-# headers = [""] + headers
-# report = fmt % tuple(headers)
-# report += '\n'
-
-# for val in misclassified_files_array:
-#     report += val[0] + "   " + val[1] + "  " +val[2] +"\n"
-
-# #     values = [file]
-# #     for v in val:
-# #         values += [" {} ".format(v)]
-# #     report += fmt % tuple(values)
-
-# print(report)
-
-
-# from prettytable import PrettyTable
-
-# x = [["A", "B"], ["C", "D"]]
-
-#{file:[obs,pred]}
 p = PrettyTable()
-for row in temp_array:
+p.field_names = ["Source File", "Observed label", "Predicted label"]
+for row in misclassified_files:
    p.add_row(row)
 
-p.align = "l"
-print(p.get_string(header=False, border=False))
+p.align["Source File"] = "l"
+p.align["Observed label"] = "c"
+p.align["Predicted label"] = "c"
+
+table_txt = "\n \n========================= Misclassified documents =========================\n \n"
+table_txt += p.get_string(header=True, border=True)
+print(table_txt)
+
+# save to file
+out_path = os.path.join(FLAGS.checkpoint_dir, "..", "misclassified.txt")
+print("Saving miclassified document to {0}\n \n".format(out_path))
+with open(out_path, 'w') as f:
+    f.write(table_txt)
 
 
-# Print accuracy if y_test is defined
-if y_final_test is not None:
-    correct_predictions = float(sum(y_final_pred == y_final_test))
-    print("Total number of test examples: {}".format(len(y_final_test)))
-    print("Accuracy on source documents: {:g}".format(correct_predictions/float(len(y_final_test))))
-    print(metrics.classification_report(y_final_test, y_final_pred, target_names=datasets['target_names']))
-    print(metrics.confusion_matrix(y_final_test, y_final_pred))
+
+# print evaluation summary for rectonstructed documents
+# ====================================================================================================
+
+if y_final_test is None:
+    print("[ERROR] observed class array, y_final_test, is empty. Program will now exit ")
+    exit()
+correct_predictions = float(sum(y_final_pred == y_final_test))
+###
+report_summary2 = "========================= Evaluation summary of reconstructed documents =========================\n"
+report_summary2 += "\n \n" 
+report_summary2 += "- Total number of source test examples: {}\n".format(len(y_test))
+report_summary2 += "- Accuracy on source documents: {:g}\n".format(correct_predictions/float(len(y_test)))
+report_summary2 += "\n \n"
+report_summary2 += metrics.classification_report(y_final_test, y_final_pred, target_names=datasets['target_names'])
+report_summary2 += "\n \n"
+report_summary2 += str(metrics.confusion_matrix(y_final_test, y_final_pred))
+print(report_summary2)
+
+###
+report_summary = report_summary1 + "\n \n"
+report_summary += report_summary2
+out_path = os.path.join(FLAGS.checkpoint_dir, "..", "eval_summary.txt")
+print("Saving evaluation summary to {0}".format(out_path))
+with open(out_path, 'w') as f:
+    f.write(report_summary)
 
 # Save the evaluation to a csv
 # predictions_human_readable = np.column_stack((np.array(x_raw),
