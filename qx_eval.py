@@ -35,6 +35,8 @@ tf.flags.DEFINE_integer("batch_size", 64, "Batch Size (default: 64)")
 tf.flags.DEFINE_string("checkpoint_dir", "", "Checkpoint directory from training run")
 tf.flags.DEFINE_string("config", "qx_config.yml", "yaml config file")
 #tf.flags.DEFINE_boolean("eval_train", False, "Evaluate on all training data")
+tf.flags.DEFINE_boolean("use_weight", False, "Use weight for infering class of reconstructed document")
+tf.flags.DEFINE_string("use_weight_type", "precision", "Type of weight used infering class of reconstructed document. Available weight types are: [support, precision, recall, f1_score]")
 
 # Misc Parameters
 tf.flags.DEFINE_boolean("allow_soft_placement", True, "Allow device soft device placement")
@@ -48,8 +50,14 @@ for attr, value in sorted(FLAGS.__flags.items()):
     print("{}={}".format(attr.upper(), value))
 print("")
 
+# if non default value (provide) get the file
+# else (default value), take the config saved by the training phase in checkpoint_dir
+if FLAGS.config != "qx_config.yml":
+    config_file = FLAGS.config
+else:
+    config_file = os.path.join(FLAGS.checkpoint_dir, "..", FLAGS.config)
 
-config_file = FLAGS.config
+
 with open(config_file, 'r') as ymlfile:
     cfg = yaml.load(ymlfile)
 
@@ -149,7 +157,7 @@ def get_summary_header(obs, pred):
     return p.get_string(header=True, border=True)
 
 
-def confusion_matrix_string(obs, pred, target_names):
+def confusion_matrix_string(obs, pred, target_names, detailed = True):
     correct_predictions = float(sum(pred == obs))
     p = PrettyTable()
     field_names = []
@@ -161,24 +169,35 @@ def confusion_matrix_string(obs, pred, target_names):
     confmat = metrics.confusion_matrix(obs, pred)
     for row in confmat:
         p.add_row(row)
+    if detailed:
+        p.add_column("cluster name",field_names)
+        p.align["cluster name"] = "r"
+        p.add_column("cluster id",[str(i) for i in range(len(field_names))])
+        p.align["cluster id"] = "l"
 
-    field_len = len(field_names)
-    p.add_column("cluster",field_names)
-    p.align["cluster"] = "r"
-    return p.get_string(header=True, border=False)
+        return p.get_string(header=True, border=False)
+    else:
+        return p.get_string(header=False, border=False)
 
-table_txt = confusion_matrix_string(y_test, all_predictions, datasets['target_names'])
 
-print(table_txt)
+confmat_detailed = confusion_matrix_string(y_test, all_predictions, datasets['target_names'], True)
 
-report_summary1 = "========================= Evaluation summary of splitted documents =========================\n"
+confmat_raw = confusion_matrix_string(y_test, all_predictions, datasets['target_names'], False)
+
+report_summary1 = "\n========================= Evaluation summary of splitted documents =========================\n"
 report_summary1 += "\n" 
 report_summary1 += get_summary_header(y_test, all_predictions)
 report_summary1 += "\n \n"
 reportsplitdoc = metrics.classification_report(y_test, all_predictions, target_names=datasets['target_names'])
 report_summary1 += reportsplitdoc
 report_summary1 += "\n \n"
-report_summary1 += str(metrics.confusion_matrix(y_test, all_predictions))
+report_summary1 += "=========== Confusion Matrix (predicted/observed)"
+report_summary1 += "\n \n"
+report_summary1 += confmat_raw
+report_summary1 += "\n \n"
+report_summary1 += "=========== Confusion Matrix (Detailed)"
+report_summary1 += "\n \n"
+report_summary1 += confmat_detailed
 print(report_summary1)
 
 
@@ -250,9 +269,12 @@ y_final_test = []
 y_final_pred = []
 misclassified_files = []
 
-Normalize = 0.0
-for r in report_data:
-    Normalize = Normalize + r['support']
+if FLAGS.use_weight_type == 'support':
+    Normalize = 0.0
+    for r in report_data:
+        Normalize = Normalize + r['support']
+else:
+    Normalize = 1.0
 
 for file, val in y_final_pred_map.items():
     hist = {}
@@ -264,16 +286,16 @@ for file, val in y_final_pred_map.items():
             hist[v[1]] = 0
         hist[v[1]] = hist[v[1]] + 1
 
+    #print(hist)
     # apply weight on prediction (not yet used, doesn t improve accuracy)
-    use_weight = False
-    if use_weight:
+    if FLAGS.use_weight:
         weight = 1.0
         for categnb, freq in hist.items():
             idx = int(categnb)
             categstr = datasets['target_names'][idx]
             for r in report_data:
                 if categstr in r['class']:
-                    weight = r['support']
+                    weight = r[FLAGS.use_weight_type]
             hist[categnb] = freq*weight/Normalize
     # get key with max values in hist 
     vals = list(hist.values())
@@ -283,15 +305,16 @@ for file, val in y_final_pred_map.items():
     y_final_pred.append(int(results))
     # find misclassified files
     if(results != int(val[0][2])):
+        subtable = [0] * len(datasets['target_names'])
+        for label_idx, label_count in hist.items():
+            subtable[int(label_idx)] = str(round(label_count, 2))
         path, file = os.path.split(file)
         path, categ = os.path.split(path)
         file = categ + "/" + file
         obs=datasets['target_names'][int(val[0][2])]
         pred=datasets['target_names'][int(results)]
-        misclassified_files.append([file,obs,pred])
-
-
-
+        summary_row = [file,obs,pred] + subtable
+        misclassified_files.append(summary_row)
 
 y_final_test = np.array(y_final_test)
 y_final_pred = np.array(y_final_pred)
@@ -304,7 +327,8 @@ y_final_pred = np.array(y_final_pred)
 # ====================================================================================================
 
 p = PrettyTable()
-p.field_names = ["Source File", "Observed label", "Predicted label"]
+subtablelabel = [str(i) for i in range(len(datasets['target_names']))]
+p.field_names = ["Source File", "Observed label", "Predicted label"] + subtablelabel
 for row in misclassified_files:
    p.add_row(row)
 
@@ -330,16 +354,26 @@ with open(out_path, 'w') as f:
 if y_final_test is None:
     print("[ERROR] observed class array, y_final_test, is empty. Program will now exit ")
     exit()
-correct_predictions = float(sum(y_final_pred == y_final_test))
+
+
+confmat_detailed = confusion_matrix_string(y_final_test, y_final_pred, datasets['target_names'], True)
+confmat_raw = confusion_matrix_string(y_final_test, y_final_pred, datasets['target_names'], False)
+
 ###
-report_summary2 = "========================= Evaluation summary of reconstructed documents =========================\n"
-report_summary2 += "\n \n" 
-report_summary2 += "- Total number of source test examples: {}\n".format(len(y_test))
-report_summary2 += "- Accuracy on source documents: {:g}\n".format(correct_predictions/float(len(y_test)))
+report_summary2 = "\n========================= Evaluation summary of reconstructed documents =========================\n"
+report_summary2 += "\n" 
+report_summary2 += get_summary_header(y_final_test, y_final_pred)
 report_summary2 += "\n \n"
 report_summary2 += metrics.classification_report(y_final_test, y_final_pred, target_names=datasets['target_names'])
 report_summary2 += "\n \n"
-report_summary2 += str(metrics.confusion_matrix(y_final_test, y_final_pred))
+report_summary2 += "=========== Confusion Matrix (predicted/observed)"
+report_summary2 += "\n \n"
+report_summary2 += confmat_raw
+report_summary2 += "\n \n"
+report_summary2 += "=========== Confusion Matrix (Detailed)"
+report_summary2 += "\n \n"
+report_summary2 += confmat_detailed
+
 print(report_summary2)
 
 ###

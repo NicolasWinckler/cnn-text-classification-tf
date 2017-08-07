@@ -51,6 +51,8 @@ tf.flags.DEFINE_integer("num_checkpoints", 5, "Number of checkpoints to store (d
 tf.flags.DEFINE_boolean("allow_soft_placement", True, "Allow device soft device placement")
 tf.flags.DEFINE_boolean("log_device_placement", False, "Log placement of ops on devices")
 
+tf.flags.DEFINE_string("config", "qx_config.yml", "yaml config file")
+
 FLAGS = tf.flags.FLAGS
 FLAGS._parse_flags()
 print("\nParameters:")
@@ -58,8 +60,12 @@ for attr, value in sorted(FLAGS.__flags.items()):
     print("{}={}".format(attr.upper(), value))
 print("")
 
-with open("qx_config.yml", 'r') as ymlfile:
+
+
+config_file = FLAGS.config
+with open(config_file, 'r') as ymlfile:
     cfg = yaml.load(ymlfile)
+
 
 #dataset_name = cfg["datasets"]["default"]
 dataset_name = "localdata" #cfg["datasets"]["default"]
@@ -294,3 +300,10 @@ with tf.Graph().as_default():
             if current_step % FLAGS.checkpoint_every == 0:
                 path = saver.save(sess, checkpoint_prefix, global_step=current_step)
                 print("Saved model checkpoint to {}\n".format(path))
+
+
+checkpoint_dir = os.path.abspath(os.path.join(out_dir, "checkpoints"))
+cfg_out = checkpoint_dir + "/" + "qx_config.yml"
+
+with open(cfg_out, 'w') as outfile:
+    yaml.dump(cfg, outfile, default_flow_style=False)
