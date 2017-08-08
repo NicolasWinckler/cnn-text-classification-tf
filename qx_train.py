@@ -43,7 +43,7 @@ tf.flags.DEFINE_float("l2_reg_lambda", 0.0, "L2 regularization lambda (default: 
 
 # Training parameters
 tf.flags.DEFINE_integer("batch_size", 64, "Batch Size (default: 64)")
-tf.flags.DEFINE_integer("num_epochs", 100, "Number of training epochs (default: 200)")
+tf.flags.DEFINE_integer("num_epochs", 80, "Number of training epochs (default: 200)")
 tf.flags.DEFINE_integer("evaluate_every", 100, "Evaluate model on dev set after this many steps (default: 100)")
 tf.flags.DEFINE_integer("checkpoint_every", 100, "Save model after this many steps (default: 100)")
 tf.flags.DEFINE_integer("num_checkpoints", 5, "Number of checkpoints to store (default: 5)")
@@ -191,7 +191,7 @@ with tf.Graph().as_default():
         timestamp = time.strftime("%Y-%m-%d-%a-%H%M%S", time.localtime())
         out_dir = os.path.abspath(os.path.join(os.path.curdir, "runs", timestamp))
         print("Writing to {}\n".format(out_dir))
-        
+
         input_param = []
         input_param.append(["DATA SET NAME",str(dataset_name)])
         input_param.append(["LABELED CLASS NB",str(class_number)])
@@ -226,6 +226,7 @@ with tf.Graph().as_default():
         checkpoint_prefix = os.path.join(checkpoint_dir, "model")
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
+
         saver = tf.train.Saver(tf.global_variables(), max_to_keep=FLAGS.num_checkpoints)
 
         # Write vocabulary
@@ -268,7 +269,7 @@ with tf.Graph().as_default():
             print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
             train_summary_writer.add_summary(summaries, step)
 
-        def dev_step(x_batch, y_batch, writer=None):
+        def dev_step(x_batch, y_batch, best_acc, best_loss, current_step, writer=None):
             """
             Evaluates model on a dev set
             """
@@ -282,10 +283,21 @@ with tf.Graph().as_default():
                 feed_dict)
             time_str = datetime.datetime.now().isoformat()
             print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+            if accuracy > best_acc and accuracy > 0.6:
+                best_acc = accuracy
+
+            if loss < best_loss:
+                loss = best_loss
+            
             if writer:
                 writer.add_summary(summaries, step)
+            
+            return accuracy, best_acc, best_loss
 
         # Generate batches
+        current_acc = 0.0
+        best_acc = 0.0
+        best_loss = 1000000000.0
         batches = data_helpers.batch_iter(
             list(zip(x_train, y_train)), FLAGS.batch_size, FLAGS.num_epochs)
         # Training loop. For each batch...
@@ -295,15 +307,15 @@ with tf.Graph().as_default():
             current_step = tf.train.global_step(sess, global_step)
             if current_step % FLAGS.evaluate_every == 0:
                 print("\nEvaluation:")
-                dev_step(x_dev, y_dev, writer=dev_summary_writer)
+                current_acc, best_acc, best_loss = dev_step(x_dev, y_dev, best_acc, best_loss ,current_step, writer=dev_summary_writer)
                 print("")
             if current_step % FLAGS.checkpoint_every == 0:
-                path = saver.save(sess, checkpoint_prefix, global_step=current_step)
-                print("Saved model checkpoint to {}\n".format(path))
+                if current_acc >= best_acc and current_acc > 0.6:
+                    path = saver.save(sess, checkpoint_prefix, global_step=current_step)
+                    print("Saved model checkpoint to {}\n".format(path))
 
 
-checkpoint_dir = os.path.abspath(os.path.join(out_dir, "checkpoints"))
-cfg_out = checkpoint_dir + "/" + "qx_config.yml"
+cfg_out = out_dir + "/" + "qx_config.yml"
 
 with open(cfg_out, 'w') as outfile:
     yaml.dump(cfg, outfile, default_flow_style=False)
