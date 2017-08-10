@@ -38,15 +38,19 @@ datasets:
       - cars_motorcycles
       - consumer_credit
       - culture
+      - decoration_furnishment_gardening
       - family_young_children
       - fitness_sport
       - healthy_organic_food
       - hightech_gadgets
+      - home_insurance
       - house_apartment_buying
       - investments
       - mortgage
       - movies
+      - music
       - shopping
+      - tv
       - tv_shows
       - video_games
     shuffle: True

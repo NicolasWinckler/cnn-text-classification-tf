@@ -162,8 +162,11 @@ def confusion_matrix_string(obs, pred, target_names, detailed = True):
     p = PrettyTable()
     field_names = []
     for categ in target_names:
-        field_name = categ.split('_')
-        field_names.append(field_name[0])
+        if categ == "tv_shows":
+            field_names.append("tv_shows")
+        else:
+            field_name = categ.split('_')
+            field_names.append(field_name[0])
     p.field_names = field_names
 
     confmat = metrics.confusion_matrix(obs, pred)
