@@ -29,8 +29,6 @@ datasets:
     # has been used. The dataset includes following 3 domains:
     # arxiv, jdm and plos
     container_path: data/quanox
-    trainingset_path: data/quanox/train
-    testset_path: data/quanox/test
     categories:
       - art
       - books
@@ -56,4 +54,3 @@ datasets:
     shuffle: True
     random_state: 42
 
-mappingfile: data/quanox/mapfiles.txt

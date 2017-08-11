@@ -43,7 +43,7 @@ tf.flags.DEFINE_float("l2_reg_lambda", 0.0, "L2 regularization lambda (default: 
 
 # Training parameters
 tf.flags.DEFINE_integer("batch_size", 64, "Batch Size (default: 64)")
-tf.flags.DEFINE_integer("num_epochs", 5, "Number of training epochs (default: 200)")
+tf.flags.DEFINE_integer("num_epochs", 100, "Number of training epochs (default: 200)")
 tf.flags.DEFINE_integer("evaluate_every", 100, "Evaluate model on dev set after this many steps (default: 100)")
 tf.flags.DEFINE_integer("checkpoint_every", 100, "Save model after this many steps (default: 100)")
 tf.flags.DEFINE_integer("num_checkpoints", 5, "Number of checkpoints to store (default: 5)")
@@ -85,7 +85,8 @@ else:
 print("Loading training data...")
 
 dataset_name = "localdata"
-datasets_train = data_helpers.get_datasets_localdata(container_path=cfg["datasets"][dataset_name]["trainingset_path"],
+data_dir = os.path.abspath(cfg["datasets"][dataset_name]["container_path"])
+datasets_train = data_helpers.get_datasets_localdata(container_path=os.path.join(data_dir, "train"),
                                                      categories=cfg["datasets"][dataset_name]["categories"],
                                                      shuffle=cfg["datasets"][dataset_name]["shuffle"],
                                                      random_state=cfg["datasets"][dataset_name]["random_state"])
@@ -97,7 +98,7 @@ x_raw_train, y_raw_train = data_helpers.load_data_labels(datasets_train)
 #
 
 print("Loading test data...")
-datasets_test = data_helpers.get_datasets_localdata(container_path=cfg["datasets"][dataset_name]["testset_path"],
+datasets_test = data_helpers.get_datasets_localdata(container_path=os.path.join(data_dir, "test"),
                                                      categories=cfg["datasets"][dataset_name]["categories"],
                                                      shuffle=cfg["datasets"][dataset_name]["shuffle"],
                                                      random_state=cfg["datasets"][dataset_name]["random_state"])
