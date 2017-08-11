@@ -231,6 +231,8 @@ with open(out_path, 'w') as f:
     csv.writer(f).writerows(predictions_human_readable)
 
 
+print("all_probabilities size = {}".format(len(all_probabilities)))
+print("all_probabilities[0] size = {}".format(len(all_probabilities[0])))
 
 # ====================================================================================================
 # Reconstruction of documents
@@ -257,10 +259,11 @@ for i in range(len(datasets['filenames'])):
     # get source file name from splitted doc idx
     sourcefile = idx2file_map[idx]
     pred = all_predictions[i]
+    file_part_info = [idx,pred,label] +list(all_probabilities[i])
     # fill map
     if sourcefile not in y_final_pred_map:
         y_final_pred_map[sourcefile] = list()
-    y_final_pred_map[sourcefile].append([idx,pred,label])
+    y_final_pred_map[sourcefile].append(file_part_info)
 
 
 # vote system to labelize the reconstructed document from splitted doc predictions
@@ -279,45 +282,79 @@ if FLAGS.use_weight_type == 'support':
 else:
     Normalize = 1.0
 
-for file, val in y_final_pred_map.items():
-    hist = {}
-    # fill the new y_test with observed class
-    y_final_test.append(int(val[0][2]))
-    # get predicted class, and fill an histogram
-    for v in val:
-        if v[1] not in hist:
-            hist[v[1]] = 0
-        hist[v[1]] = hist[v[1]] + 1
+proba_vote_method = True
+class_number = len(all_probabilities[0])
+if proba_vote_method:
+    print("vote using marginalization on cnn proba results ")
+    # P(document class) = Sum_j P(document class| document part j) x P(document part j)
+    for file, val in y_final_pred_map.items():
+        hist = {}
+        # fill the new y_test with observed class
+        y_final_test.append(int(val[0][2]))
+        # get predicted class
+        doc_proba = 1.0 / float(len(val))
+        cpt = np.array(val)
+        cpt = cpt[:,3:]
+        class_proba = cpt.sum(axis=0) * doc_proba
 
-    #print(hist)
-    # apply weight on prediction (not yet used, doesn t improve accuracy)
-    if FLAGS.use_weight:
-        weight = 1.0
-        for categnb, freq in hist.items():
-            idx = int(categnb)
-            categstr = datasets['target_names'][idx]
-            for r in report_data:
-                if categstr in r['class']:
-                    weight = r[FLAGS.use_weight_type]
-            hist[categnb] = freq*weight/Normalize
-    # get key with max values in hist 
-    vals = list(hist.values())
-    keys = list(hist.keys())
-    results = keys[vals.index(max(vals))]
-    # fill the new y_test with predicted class
-    y_final_pred.append(int(results))
-    # find misclassified files
-    if(results != int(val[0][2])):
-        subtable = [0] * len(datasets['target_names'])
-        for label_idx, label_count in hist.items():
-            subtable[int(label_idx)] = str(round(label_count, 2))
-        path, file = os.path.split(file)
-        path, categ = os.path.split(path)
-        file = categ + "/" + file
-        obs=datasets['target_names'][int(val[0][2])]
-        pred=datasets['target_names'][int(results)]
-        summary_row = [file,obs,pred] + subtable
-        misclassified_files.append(summary_row)
+        # get index with max values in P(class)
+        results = np.argmax(class_proba,axis=0)
+
+        # fill the new y_test with predicted class
+        y_final_pred.append(int(results))
+        # find misclassified files
+        if(results != int(val[0][2])):
+            subtable = [0] * len(datasets['target_names'])
+            for i in range(len(class_proba)):
+                subtable[i] = str(round(class_proba[i], 2))
+            path, file = os.path.split(file)
+            path, categ = os.path.split(path)
+            file = categ + "/" + file
+            obs=datasets['target_names'][int(val[0][2])]
+            pred=datasets['target_names'][int(results)]
+            summary_row = [file,obs,pred] + subtable
+            misclassified_files.append(summary_row)
+
+else:
+    for file, val in y_final_pred_map.items():
+        hist = {}
+        # fill the new y_test with observed class
+        y_final_test.append(int(val[0][2]))
+        # get predicted class, and fill an histogram
+        for v in val:
+            if v[1] not in hist:
+                hist[v[1]] = 0
+            hist[v[1]] = hist[v[1]] + 1
+
+        #print(hist)
+        # apply weight on prediction (not yet used, doesn t improve accuracy)
+        if FLAGS.use_weight:
+            weight = 1.0
+            for categnb, freq in hist.items():
+                idx = int(categnb)
+                categstr = datasets['target_names'][idx]
+                for r in report_data:
+                    if categstr in r['class']:
+                        weight = r[FLAGS.use_weight_type]
+                hist[categnb] = freq*weight/Normalize
+        # get key with max values in hist 
+        vals = list(hist.values())
+        keys = list(hist.keys())
+        results = keys[vals.index(max(vals))]
+        # fill the new y_test with predicted class
+        y_final_pred.append(int(results))
+        # find misclassified files
+        if(results != int(val[0][2])):
+            subtable = [0] * len(datasets['target_names'])
+            for label_idx, label_count in hist.items():
+                subtable[int(label_idx)] = str(round(label_count, 2))
+            path, file = os.path.split(file)
+            path, categ = os.path.split(path)
+            file = categ + "/" + file
+            obs=datasets['target_names'][int(val[0][2])]
+            pred=datasets['target_names'][int(results)]
+            summary_row = [file,obs,pred] + subtable
+            misclassified_files.append(summary_row)
 
 y_final_test = np.array(y_final_test)
 y_final_pred = np.array(y_final_pred)
