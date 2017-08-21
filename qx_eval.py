@@ -148,16 +148,18 @@ if y_test is None:
 def get_summary_header(obs, pred):
     correct_predictions = float(sum(pred == obs))
     p = PrettyTable()
-    p.field_names = ["correct predictions", "incorrect predictions", "Test set sample size", "Accuracy"]
+    p.field_names = ["correct predictions", "incorrect predictions", "Test set sample size", "Class number", "Accuracy"]
     acc = "{:g}".format(correct_predictions/float(len(obs)))
     test_size = str(len(pred))
     cor_pred_size = str(int(correct_predictions))
     incor_pred_size = str(sum(pred != obs))
-    p.add_row([cor_pred_size, incor_pred_size, test_size, acc])
+    class_number = str(len(datasets['target_names']))
+    p.add_row([cor_pred_size, incor_pred_size, test_size, class_number, acc])
 
     p.align["correct predictions"] = "c"
     p.align["incorrect predictions"] = "c"
     p.align["Test set sample size"] = "c"
+    p.align["Class number"] = "c"
     p.align["Accuracy"] = "c"
     return p.get_string(header=True, border=True)
 
@@ -311,7 +313,7 @@ if FLAGS.vote_type == "proba":
                 categstr = datasets['target_names'][idx]
                 for r in report_data:
                     if categstr in r['class']:
-                        weight = r['support']
+                        weight = r['support']/Normalize
                 class_proba[idx] = class_proba[idx]*weight
 
         # get index with max values in P(class)
